@@ -56,7 +56,7 @@ public class Detection extends AppCompatActivity{
             InputStream inputStream = getResources().openRawResource(R.raw.pulse);
             int length = inputStream.available();
             byte[] buffer = new byte[length];
-            inputStream.read(buffer);
+            inputStream.read(buffer);       //这一句不能省略，省略了之后无法显示波形，测试过了。
             data = new String(buffer);
             inputStream.close();
             String[] dataS = data.split("\r\n");    //注意此处不能写成"/r/n"

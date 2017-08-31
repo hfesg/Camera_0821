@@ -30,7 +30,7 @@ public class EcgView extends SurfaceView implements SurfaceHolder.Callback {
     private float lockWidth;        //每次锁屏需要画的点数
     private String backgroundColor = "#3FB57D";     //设置背景色
     private int ecgPerCount = 1;    //每次画心电数据的个数，我这个一秒钟只有30个数据。
-    private float ecgMax = 1000000;             //心电的最大值，我是否用得上？-或许需要进行进一步的改进，这是y轴的最大值..每次画心电数据的个数，心电每秒有500个数据包
+    private float ecgMax = 600000;             //心电的最大值，我是否用得上？-或许需要进行进一步的改进，这是y轴的最大值..每次画心电数据的个数，心电每秒有500个数据包
                                                 //1000000是实验出来的,这样波形会出现在中央,比较好看,同时由于是等比例移动,所以对波形本身没有什么变化
                                                 //该参数控制Y轴性质
     private float ecgYRatio;          //心电数据在Y轴上的比例
@@ -72,7 +72,7 @@ public class EcgView extends SurfaceView implements SurfaceHolder.Callback {
             if (ecgDatas.size() > ecgPerCount) {
                 for (int i = 0; i < ecgPerCount; i++){
                     float newX = (float) (mStartX + ecgXoffset);
-                    int newY = ecgCover(ecgDatas.poll());       //剪切出ecgDatas中的第一个数据，poll:移除并返问队列头部的元素,意思是将头部第一个数据剪切出来。
+                    int newY = ecgCover(ecgDatas.poll()) * 3;       //剪切出ecgDatas中的第一个数据，poll:移除并返问队列头部的元素,意思是将头部第一个数据剪切出来。
                     mCanvas.drawLine(mStartX, startY, newX, newY, mPaint);
                     mStartX = newX;
                     startY = newY;
@@ -156,7 +156,7 @@ public class EcgView extends SurfaceView implements SurfaceHolder.Callback {
         //设置画笔参数，颜色，宽度等
         mPaint = new Paint();
         mPaint.setColor(Color.WHITE);
-        mPaint.setStrokeWidth(6);
+        mPaint.setStrokeWidth(3);
 
         ecgXoffset = lockWidth / ecgPerCount;
         startY = mHeight / 2;       //波的初始Y坐标为控件高度的一半

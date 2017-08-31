@@ -24,13 +24,23 @@ import android.widget.RadioGroup;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
+import com.example.ykx.camera_0821.image_processing.ImageProcessing;
 import com.example.ykx.camera_0821.util.FaceRect;
 import com.example.ykx.camera_0821.util.FaceUtil;
 import com.example.ykx.camera_0821.util.ParseResult;
+import com.example.ykx.camera_0821.view.EcgView;
 import com.iflytek.cloud.FaceDetector;
 import com.iflytek.cloud.util.Accelerometer;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 /**
@@ -40,6 +50,27 @@ import java.io.IOException;
 public class VideoActivity extends AppCompatActivity {
 
     private static final String TAG = "VideoActivity";
+
+    //创建一个AtomICBoolean类型的变量，确保在获取图像平均像素值的时候，没有别的线程会插入
+    //会不会对面部识别造成影响？
+    private static final AtomicBoolean processing = new AtomicBoolean(false);
+//    private static int gx;
+    private static final int averageArraySize = 4;
+    private static final int[] averageArray = new int[averageArraySize];
+    private double beats = 0;
+    private static int averageIndex = 0;
+    private static long startTime = 0;
+    private static int beatsIndex = 0;
+    private static final int beatsArraySize = 3;
+    private static final int[] beatsArray = new int[beatsArraySize];
+
+    private static enum TYPE {
+        GREEN, RED
+    }
+    private static TYPE currentType = TYPE.GREEN;
+    public static TYPE getCurrentType(){
+        return currentType;
+    }
 
     // Camera nv21格式预览帧的尺寸，默认设置640*480
     private final static int PREVIEW_WIDTH = 640;
@@ -64,6 +95,10 @@ public class VideoActivity extends AppCompatActivity {
     // 缩放矩阵
     private Matrix mScaleMatrix = new Matrix();
 
+    //波形图绘制相关数组
+    private List<Integer> datas = new ArrayList<>();
+    private Queue<Integer> dataQ = new LinkedList<>();
+
     private SurfaceHolder.Callback mPreviewCallback = new SurfaceHolder.Callback() {
         @Override
         public void surfaceCreated(SurfaceHolder holder) {
@@ -86,12 +121,54 @@ public class VideoActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_video);
 
+        //人脸检测相关
         initUI();
+
+        //心率波形图相关
+        loadDatas();
+        simulator();
 
         nv21 = new byte[PREVIEW_WIDTH * PREVIEW_HEIGHT *2];
         buffer = new byte[PREVIEW_WIDTH * PREVIEW_HEIGHT *2];
         mAcc = new Accelerometer(VideoActivity.this);
         mFaceDetector = FaceDetector.createDetector(VideoActivity.this, null);
+    }
+
+    private void simulator() {
+        new Timer().schedule(new TimerTask() {
+            @Override
+            public void run() {
+                if (EcgView.isRunning){
+                    if (dataQ.size() > 0){
+                        EcgView.addEcgData(dataQ.poll());
+                    }
+                }
+            }
+        }, 0, 2);       //第一个参数即实现的方法，具体实现什么
+                        //第二个参数为schedule()方法实现后,多长时间(ms)开始执行
+                        //第三个参数为每次执行之间的时间间距(ms)
+    }
+
+    private void loadDatas() {
+        try {
+            String data;
+            InputStream inputStream = getResources().openRawResource(R.raw.pulse);
+            int length = inputStream.available();
+            byte[] buffer = new byte[length];
+            inputStream.read(buffer);
+            data = new String(buffer);
+            inputStream.close();
+            String[] dataS = data.split("\r\n");    //注意此处不能写成"/r/n"
+            for (String str : dataS){
+                double dataTemp = Double.parseDouble(str);
+                dataTemp *= 10000;
+//                Log.d(TAG, "loadDatas: datatemp" + dataTemp);
+                datas.add((int) dataTemp);
+            }
+            dataQ.addAll(datas);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void initUI() {
@@ -179,7 +256,6 @@ public class VideoActivity extends AppCompatActivity {
         mFaceSurface.setLayoutParams(params);
     }
 
-
     private void openCamera() {
         if (null != mCamera) {
             return;
@@ -209,7 +285,7 @@ public class VideoActivity extends AppCompatActivity {
             return;
         }
 
-        Camera.Parameters parameters = mCamera.getParameters();
+        final Camera.Parameters parameters = mCamera.getParameters();
         parameters.setPictureFormat(ImageFormat.NV21);
         parameters.setPreviewSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
         mCamera.setParameters(parameters);
@@ -220,6 +296,85 @@ public class VideoActivity extends AppCompatActivity {
             @Override
             public void onPreviewFrame(byte[] data, Camera camera) {
                 System.arraycopy(data, 0, nv21, 0, data.length);
+//                if (nv21 == null) {
+//                    throw new NullPointerException();
+//                }
+//                Camera.Size size = parameters.getPreviewSize();
+//                if (!processing.compareAndSet(false, true)) {
+//                    return;
+//                }
+//                int width = size.width;
+//                int height = size.height;
+//                //图像处理，获取平均像素值
+//                int imgAvg = ImageProcessing.decodeYUV420SPtoRedAvg(nv21, width, height);
+//                if (0 == imgAvg || 255 == imgAvg) {
+//                    processing.set(false);
+//                    return;
+//                }
+//
+//                //获取脉冲数
+//                int averageArrayAvg = 0;
+//                int averageArrayCnt = 0;
+//                for (int i = 0; i < averageArray.length; i++){
+//                    if (averageArray[i] > 0) {
+//                        averageArrayAvg += averageArray[i];
+//                        averageArrayCnt++;
+//                    }
+//                }
+//
+//                int rollingAverage = (averageArrayCnt > 0) ? (averageArrayAvg / averageArrayCnt) : 0;
+//                TYPE newType = getCurrentType();
+//                if (imgAvg < rollingAverage) {
+//                    newType = TYPE.RED;
+//                    if (newType != currentType) {
+//                        beats++;
+//                    }
+//                } else if (imgAvg > rollingAverage) {
+//                    newType = TYPE.GREEN;
+//                }
+//
+//                if (averageIndex == averageArraySize) {
+//                    averageIndex = 0;
+//                    averageArray[averageIndex] = imgAvg;
+//                    averageIndex++;
+//                }
+//
+//                //从一种状态转换到另外一种状态
+//                if (newType != currentType) {
+//                    currentType = newType;
+//                }
+//                //获取系统结束时间（ms）
+//                long endTime = System.currentTimeMillis();
+//                double totalTimeInSec = (endTime - startTime) / 1000d;
+//                if (totalTimeInSec >= 2) {
+//                    double bps = beats / totalTimeInSec;
+//                    int dpm = (int) (bps * 60d);
+//                    if (dpm < 30 || dpm > 180 || imgAvg < 200) {
+//                        //获取系统开始时间（ms）
+//                        startTime = System.currentTimeMillis();
+//                        beats = 0;
+//                        processing.set(false);
+//                        return;
+//                    }
+//
+//                    if (beatsIndex == beatsArraySize) {
+//                        beatsIndex = 0;
+//                    }
+//                    beatsArray[beatsIndex] = dpm;
+//                    beatsIndex++;
+//                    int beatsArrayAvg = 0;
+//                    int beatsArrayCnt = 0;
+//                    for (int i = 0; i < beatsArray.length; i++){
+//                        if (beatsArray[i] > 0) {
+//                            beatsArrayAvg += beatsArray[i];
+//                            beatsArrayCnt++;
+//                        }
+//                    }
+//                    int beatsAvg = beatsArrayAvg / beatsArrayCnt;
+//                    startTime = System.currentTimeMillis();
+//                    beats = 0;
+//                }
+//                processing.set(false);
             }
         });
 
@@ -274,7 +429,7 @@ public class VideoActivity extends AppCompatActivity {
                         continue;
                     }
 
-                    //???为何要把nv21中的数据再挪到buffer中？方便nv21再去接收吗？
+                    //???为何要把nv21中的数据再挪到buffer中？方便nv21再去接收吗？还是防止nv21中的数据发生变化？
                     synchronized (nv21){
                         System.arraycopy(nv21, 0, buffer, 0, nv21.length);
                     }
@@ -300,7 +455,7 @@ public class VideoActivity extends AppCompatActivity {
                     }
 
                     String result = mFaceDetector.trackNV21(buffer, PREVIEW_WIDTH, PREVIEW_HEIGHT, isAlign, direction);
-                    Log.d(TAG, "run: " + result);
+//                    Log.w(TAG, "run: " + result);
 
                     FaceRect[] faces = ParseResult.parseResult(result);
 
@@ -321,8 +476,9 @@ public class VideoActivity extends AppCompatActivity {
                         for (FaceRect face : faces){
                             face.bound = FaceUtil.RotateDeg90(face.bound, PREVIEW_WIDTH, PREVIEW_HEIGHT);
                             if (face.point != null) {
-                                for (int i = 0; i <face.point.length; i++){
+                                for (int i = 0; i < face.point.length; i++){
                                     face.point[i] = FaceUtil.RotateDeg90(face.point[i], PREVIEW_WIDTH, PREVIEW_HEIGHT);
+//                                    Log.i(TAG, "point" + i + ": " + face.point[i]);
                                 }
                             }
                             FaceUtil.drawFaceRect(canvas, face, PREVIEW_WIDTH, PREVIEW_HEIGHT, frontCamera, false);
@@ -334,6 +490,7 @@ public class VideoActivity extends AppCompatActivity {
                 }
             }
         }).start();
+        startTime = System.currentTimeMillis();
     }
 
     @Override
